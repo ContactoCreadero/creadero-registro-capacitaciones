@@ -1,64 +1,216 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
-import type { Profile } from '@/lib/types';
+import {
+  useEffect,
+  useState,
+} from 'react';
+
+import type {
+  Session,
+} from '@supabase/supabase-js';
+
+import {
+  supabase,
+} from '@/lib/supabase';
+
+import type {
+  Profile,
+} from '@/lib/types';
+
 import Login from '@/components/Login';
 import AppShell from '@/components/AppShell';
 
 export default function Page() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [
+    session,
+    setSession,
+  ] =
+    useState<Session | null>(
+      null
+    );
+
+  const [
+    profile,
+    setProfile,
+  ] =
+    useState<Profile | null>(
+      null
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState('');
+
+  /*
+   * ==========================================
+   * CONTROL DE SESIÓN
+   * ==========================================
+   *
+   * IMPORTANTE:
+   *
+   * Supabase puede emitir eventos como
+   * SIGNED_IN o TOKEN_REFRESHED cuando
+   * vuelves a una pestaña del navegador.
+   *
+   * No debemos borrar el perfil en esos
+   * eventos.
+   */
 
   useEffect(() => {
     let mounted = true;
 
-    // Carga inicial de sesión
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
+    /*
+     * Cargar la sesión existente
+     * al abrir la aplicación.
+     */
 
-      setSession(data.session);
+    void supabase.auth
+      .getSession()
+      .then(
+        ({
+          data,
+          error:
+            sessionError,
+        }) => {
+          if (!mounted) {
+            return;
+          }
 
-      if (!data.session) {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
+          if (
+            sessionError
+          ) {
+            console.error(
+              'Error al recuperar sesión:',
+              sessionError
+            );
 
-    // Escucha cambios reales de autenticación
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, nextSession) => {
-        if (!mounted) return;
+            setSession(null);
+            setProfile(null);
+            setLoading(false);
 
-        setSession(nextSession);
+            return;
+          }
 
-        // IMPORTANTE:
-        // No borrar el perfil en TOKEN_REFRESHED ni SIGNED_IN,
-        // porque estos eventos pueden ocurrir al volver a la pestaña.
-        if (event === 'SIGNED_OUT' || !nextSession) {
-          setProfile(null);
-          setLoading(false);
+          setSession(
+            data.session
+          );
+
+          /*
+           * Si no existe sesión,
+           * mostramos Login.
+           *
+           * Si existe sesión,
+           * loadProfile() será
+           * ejecutado por el
+           * siguiente useEffect.
+           */
+          if (
+            !data.session
+          ) {
+            setProfile(null);
+            setLoading(false);
+          }
         }
-      }
-    );
+      );
+
+    /*
+     * Escuchar cambios de
+     * autenticación.
+     */
+
+    const {
+      data:
+        authListener,
+    } =
+      supabase.auth
+        .onAuthStateChange(
+          (
+            event,
+            nextSession
+          ) => {
+            if (!mounted) {
+              return;
+            }
+
+            /*
+             * Siempre actualizamos
+             * la sesión.
+             */
+            setSession(
+              nextSession
+            );
+
+            /*
+             * SOLO borrar el perfil
+             * cuando realmente se
+             * cierra la sesión.
+             *
+             * No hacerlo durante:
+             *
+             * SIGNED_IN
+             * TOKEN_REFRESHED
+             * USER_UPDATED
+             *
+             * porque estos eventos
+             * pueden ocurrir al
+             * cambiar de pestaña.
+             */
+            if (
+              event ===
+                'SIGNED_OUT' ||
+              !nextSession
+            ) {
+              setProfile(null);
+              setError('');
+              setLoading(false);
+            }
+          }
+        );
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+
+      authListener
+        .subscription
+        .unsubscribe();
     };
   }, []);
 
+  /*
+   * ==========================================
+   * CARGAR PERFIL
+   * ==========================================
+   *
+   * Solo se vuelve a cargar cuando cambia
+   * realmente el usuario autenticado.
+   *
+   * Un refresh del token NO provoca que
+   * perdamos el perfil.
+   */
+
   useEffect(() => {
-    if (!session?.user) return;
+    if (
+      !session?.user
+    ) {
+      return;
+    }
 
     void loadProfile(
       session.user.id,
-      session.user.email ?? null
+      session.user.email ??
+        null
     );
-  }, [session?.user?.id]);
+  }, [
+    session?.user?.id,
+  ]);
 
   async function loadProfile(
     id: string,
@@ -67,50 +219,136 @@ export default function Page() {
     setLoading(true);
     setError('');
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id,email,full_name,role')
-      .eq('id', id)
-      .single();
+    const {
+      data,
+      error:
+        profileError,
+    } =
+      await supabase
+        .from('profiles')
+        .select(
+          'id,email,full_name,role'
+        )
+        .eq(
+          'id',
+          id
+        )
+        .single();
 
-    if (error || !data) {
+    /*
+     * Si por algún motivo
+     * no puede leerse profiles,
+     * usamos un perfil limitado
+     * de tipo user.
+     *
+     * Nunca otorgamos admin
+     * como fallback.
+     */
+    if (
+      profileError ||
+      !data
+    ) {
+      console.error(
+        'Error al cargar perfil:',
+        profileError
+      );
+
       setError(
-        'No se pudo cargar el perfil. Revisa la configuración del usuario.'
+        'No se pudo cargar correctamente el perfil del usuario. Se aplicaron permisos restringidos.'
       );
 
       setProfile({
         id,
         email,
-        full_name: null,
-        role: 'user',
+        full_name:
+          null,
+        role:
+          'user',
       });
-    } else {
-      setProfile(data as Profile);
+
+      setLoading(false);
+
+      return;
     }
+
+    setProfile(
+      data as Profile
+    );
 
     setLoading(false);
   }
 
+  /*
+   * ==========================================
+   * CARGANDO
+   * ==========================================
+   */
+
   if (loading) {
     return (
       <main className="splash">
-        <img src="/logo.png" alt="Creadero" />
-        <span>Cargando plataforma…</span>
+
+        <img
+          src="/logo.png"
+          alt="Creadero"
+        />
+
+        <span>
+          Cargando plataforma…
+        </span>
+
       </main>
     );
   }
 
+  /*
+   * ==========================================
+   * SIN SESIÓN
+   * ==========================================
+   */
+
   if (!session) {
-    return <Login />;
+    return (
+      <Login />
+    );
   }
+
+  /*
+   * ==========================================
+   * SESIÓN EXISTENTE PERO PERFIL
+   * TODAVÍA NO DISPONIBLE
+   * ==========================================
+   *
+   * Ya no mostramos:
+   *
+   * "No fue posible cargar la aplicación"
+   *
+   * mientras Supabase procesa un evento
+   * de autenticación.
+   */
 
   if (!profile) {
     return (
       <main className="splash">
-        Cargando perfil…
+
+        <img
+          src="/logo.png"
+          alt="Creadero"
+        />
+
+        <span>
+          Cargando perfil…
+        </span>
+
       </main>
     );
   }
+
+  /*
+   * ==========================================
+   * APLICACIÓN
+   * ==========================================
+   */
 
   return (
     <>
@@ -120,7 +358,11 @@ export default function Page() {
         </div>
       )}
 
-      <AppShell profile={profile} />
+      <AppShell
+        profile={
+          profile
+        }
+      />
     </>
   );
 }
