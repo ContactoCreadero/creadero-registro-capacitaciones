@@ -16,20 +16,35 @@ export type CatalogItem = {
 
 export type TrainingRecord = {
   id: string;
-  client_id: string;
+
+  client_name: string;
+
+  client_id?: string | null;
+
   site: string;
   training_date: string;
   facilitator_id: string;
+
   start_time: string;
   end_time: string;
+
   duration_minutes: number;
+
   activity_name: string;
+
   participants_count: number | null;
+
   observations: string | null;
+
   attachment_path: string | null;
+
   created_by: string;
+
   created_at: string;
   updated_at: string;
-  clients?: { name: string } | { name: string }[] | null;
-  facilitators?: { name: string } | { name: string }[] | null;
+
+  facilitators?:
+    | { name: string }
+    | { name: string }[]
+    | null;
 };

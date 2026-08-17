@@ -15,38 +15,112 @@ export default function Page() {
 
   useEffect(() => {
     let mounted = true;
+
+    // Carga inicial de sesión
     void supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
+
       setSession(data.session);
-      if (!data.session) setLoading(false);
+
+      if (!data.session) {
+        setProfile(null);
+        setLoading(false);
+      }
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-      setProfile(null);
-      if (!next) setLoading(false);
-    });
-    return () => { mounted = false; listener.subscription.unsubscribe(); };
+
+    // Escucha cambios reales de autenticación
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (event, nextSession) => {
+        if (!mounted) return;
+
+        setSession(nextSession);
+
+        // IMPORTANTE:
+        // No borrar el perfil en TOKEN_REFRESHED ni SIGNED_IN,
+        // porque estos eventos pueden ocurrir al volver a la pestaña.
+        if (event === 'SIGNED_OUT' || !nextSession) {
+          setProfile(null);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (!session?.user) return;
-    void loadProfile(session.user.id, session.user.email ?? null);
+
+    void loadProfile(
+      session.user.id,
+      session.user.email ?? null
+    );
   }, [session?.user?.id]);
 
-  async function loadProfile(id: string, email: string | null) {
+  async function loadProfile(
+    id: string,
+    email: string | null
+  ) {
     setLoading(true);
     setError('');
-    const { data, error } = await supabase.from('profiles').select('id,email,full_name,role').eq('id', id).single();
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id,email,full_name,role')
+      .eq('id', id)
+      .single();
+
     if (error || !data) {
-      setError('No se pudo cargar el perfil. Revisa que hayas ejecutado supabase/schema.sql y creado el perfil del usuario.');
-      setProfile({ id, email, full_name: null, role: 'user' });
-    } else setProfile(data as Profile);
+      setError(
+        'No se pudo cargar el perfil. Revisa la configuración del usuario.'
+      );
+
+      setProfile({
+        id,
+        email,
+        full_name: null,
+        role: 'user',
+      });
+    } else {
+      setProfile(data as Profile);
+    }
+
     setLoading(false);
   }
 
-  if (loading) return <main className="splash"><img src="/logo.png" alt="Creadero" /><span>Cargando plataforma…</span></main>;
-  if (!session) return <Login />;
-  if (!profile) return <main className="splash">No fue posible cargar la aplicación.</main>;
+  if (loading) {
+    return (
+      <main className="splash">
+        <img src="/logo.png" alt="Creadero" />
+        <span>Cargando plataforma…</span>
+      </main>
+    );
+  }
 
-  return <>{error && <div className="global-warning">{error}</div>}<AppShell profile={profile} /></>;
+  if (!session) {
+    return <Login />;
+  }
+
+  if (!profile) {
+    return (
+      <main className="splash">
+        Cargando perfil…
+      </main>
+    );
+  }
+
+  return (
+    <>
+      {error && (
+        <div className="global-warning">
+          {error}
+        </div>
+      )}
+
+      <AppShell profile={profile} />
+    </>
+  );
 }
