@@ -43,6 +43,9 @@ type FileSlot = {
 const MAX_FILE_SIZE =
   10 * 1024 * 1024;
 
+const OTHER_FACILITATOR_VALUE =
+  '__OTROS__';
+
 const initialForm = {
   client_name: '',
   site: '',
@@ -87,6 +90,11 @@ export default function TrainingForm({
   ] = useState(initialForm);
 
   const [
+    otherFacilitator,
+    setOtherFacilitator,
+  ] = useState('');
+
+  const [
     existingAttachments,
     setExistingAttachments,
   ] =
@@ -103,13 +111,6 @@ export default function TrainingForm({
     ]
   );
 
-  /*
-   * Si una capacitación nueva
-   * alcanza a guardarse pero
-   * algún adjunto falla,
-   * conservamos el ID para
-   * poder reintentar.
-   */
   const [
     persistedId,
     setPersistedId,
@@ -161,9 +162,6 @@ export default function TrainingForm({
     setError('');
     setSuccess('');
 
-    /*
-     * CARGAR RELATORES
-     */
     const {
       data:
         facilitatorsData,
@@ -195,9 +193,6 @@ export default function TrainingForm({
       ) as CatalogItem[]
     );
 
-    /*
-     * EDICIÓN DE REGISTRO
-     */
     if (recordId) {
       const [
         recordResponse,
@@ -263,7 +258,8 @@ export default function TrainingForm({
           r.training_date,
 
         facilitator_id:
-          r.facilitator_id,
+          r.facilitator_id ??
+          '',
 
         start_time:
           r.start_time.slice(
@@ -293,6 +289,10 @@ export default function TrainingForm({
           '',
       });
 
+      setOtherFacilitator(
+        ''
+      );
+
       setPersistedId(
         recordId
       );
@@ -316,9 +316,6 @@ export default function TrainingForm({
         );
       }
     } else {
-      /*
-       * NUEVO REGISTRO
-       */
       setForm({
         ...initialForm,
 
@@ -327,6 +324,10 @@ export default function TrainingForm({
             .toISOString()
             .slice(0, 10),
       });
+
+      setOtherFacilitator(
+        ''
+      );
 
       setExistingAttachments(
         []
@@ -357,11 +358,115 @@ export default function TrainingForm({
     );
   }
 
-  /*
-   * ==========================================
-   * ADJUNTOS
-   * ==========================================
-   */
+  async function resolveFacilitatorId():
+    Promise<string> {
+    if (
+      form.facilitator_id !==
+      OTHER_FACILITATOR_VALUE
+    ) {
+      return form.facilitator_id;
+    }
+
+    const name =
+      otherFacilitator.trim();
+
+    if (!name) {
+      throw new Error(
+        'Escribe el nombre del relator/facilitador.'
+      );
+    }
+
+    const existing =
+      facilitators.find(
+        (item) =>
+          item.name
+            .trim()
+            .toLocaleLowerCase(
+              'es-CL'
+            ) ===
+          name.toLocaleLowerCase(
+            'es-CL'
+          )
+      );
+
+    if (existing) {
+      setField(
+        'facilitator_id',
+        existing.id
+      );
+
+      setOtherFacilitator(
+        ''
+      );
+
+      return existing.id;
+    }
+
+    const {
+      data,
+      error:
+        insertError,
+    } =
+      await supabase
+        .from(
+          'facilitators'
+        )
+        .insert({
+          name,
+          active: true,
+          created_by:
+            userId,
+        })
+        .select(
+          'id,name,active'
+        )
+        .single();
+
+    if (
+      insertError ||
+      !data
+    ) {
+      throw new Error(
+        `No fue posible crear el nuevo relator/facilitador: ${
+          insertError
+            ?.message ??
+          'error desconocido'
+        }`
+      );
+    }
+
+    const created =
+      data as CatalogItem;
+
+    setFacilitators(
+      (prev) =>
+        [
+          ...prev,
+          created,
+        ].sort(
+          (a, b) =>
+            a.name.localeCompare(
+              b.name,
+              'es-CL',
+              {
+                sensitivity:
+                  'base',
+              }
+            )
+        )
+    );
+
+    setField(
+      'facilitator_id',
+      created.id
+    );
+
+    setOtherFacilitator(
+      ''
+    );
+
+    return created.id;
+  }
 
   function addFileSlot() {
     setFileSlots(
@@ -467,12 +572,6 @@ export default function TrainingForm({
     return null;
   }
 
-  /*
-   * ==========================================
-   * GUARDAR
-   * ==========================================
-   */
-
   async function submit(
     e: FormEvent
   ) {
@@ -480,10 +579,6 @@ export default function TrainingForm({
 
     setError('');
     setSuccess('');
-
-    /*
-     * VALIDACIONES
-     */
 
     if (
       !form.client_name.trim()
@@ -516,6 +611,18 @@ export default function TrainingForm({
     }
 
     if (
+      form.facilitator_id ===
+        OTHER_FACILITATOR_VALUE &&
+      !otherFacilitator.trim()
+    ) {
+      setError(
+        'Escribe el nombre del relator/facilitador.'
+      );
+
+      return;
+    }
+
+    if (
       !form.activity_name.trim()
     ) {
       setError(
@@ -534,10 +641,6 @@ export default function TrainingForm({
 
       return;
     }
-
-    /*
-     * ARCHIVOS A SUBIR
-     */
 
     const filesToUpload =
       fileSlots
@@ -582,24 +685,33 @@ export default function TrainingForm({
 
     setSaving(true);
 
+    let facilitatorId =
+      form.facilitator_id;
+
+    try {
+      facilitatorId =
+        await resolveFacilitatorId();
+    } catch (
+      facilitatorError
+    ) {
+      setError(
+        facilitatorError instanceof
+          Error
+          ? facilitatorError.message
+          : 'No fue posible guardar el relator/facilitador.'
+      );
+
+      setSaving(false);
+
+      return;
+    }
+
     const id =
       persistedId ??
       recordId ??
       crypto.randomUUID();
 
-    /*
-     * ==========================================
-     * GUARDAR DATOS DE CAPACITACIÓN
-     * ==========================================
-     */
-
     if (recordId) {
-      /*
-       * EDITAR REGISTRO EXISTENTE
-       *
-       * No modificamos created_by.
-       */
-
       const {
         error:
           saveError,
@@ -619,7 +731,7 @@ export default function TrainingForm({
               form.training_date,
 
             facilitator_id:
-              form.facilitator_id,
+              facilitatorId,
 
             start_time:
               form.start_time,
@@ -661,10 +773,6 @@ export default function TrainingForm({
     } else if (
       !persistedId
     ) {
-      /*
-       * NUEVA CAPACITACIÓN
-       */
-
       const {
         error:
           saveError,
@@ -686,7 +794,7 @@ export default function TrainingForm({
               form.training_date,
 
             facilitator_id:
-              form.facilitator_id,
+              facilitatorId,
 
             start_time:
               form.start_time,
@@ -725,17 +833,8 @@ export default function TrainingForm({
         return;
       }
 
-      /*
-       * El registro ya existe.
-       */
       setPersistedId(id);
     }
-
-    /*
-     * ==========================================
-     * SUBIR TODOS LOS ADJUNTOS
-     * ==========================================
-     */
 
     const failedFiles: {
       slotId: string;
@@ -764,9 +863,6 @@ export default function TrainingForm({
       const storagePath =
         `${userId}/${id}/${uniqueFileName}`;
 
-      /*
-       * Subir a Storage
-       */
       const {
         error:
           uploadError,
@@ -803,10 +899,6 @@ export default function TrainingForm({
         continue;
       }
 
-      /*
-       * Registrar archivo
-       * en training_attachments
-       */
       const {
         data:
           attachmentData,
@@ -843,12 +935,6 @@ export default function TrainingForm({
           )
           .single();
 
-      /*
-       * Si Storage funcionó
-       * pero BD falló,
-       * eliminamos el archivo
-       * para evitar huérfanos.
-       */
       if (
         attachmentError ||
         !attachmentData
@@ -882,11 +968,6 @@ export default function TrainingForm({
       );
     }
 
-    /*
-     * Mostrar adjuntos
-     * correctamente guardados.
-     */
-
     if (
       uploadedAttachments.length >
       0
@@ -898,12 +979,6 @@ export default function TrainingForm({
         ]
       );
     }
-
-    /*
-     * Si fallaron archivos,
-     * dejamos solo esos para
-     * reintentar.
-     */
 
     if (
       failedFiles.length >
@@ -930,11 +1005,6 @@ export default function TrainingForm({
       return;
     }
 
-    /*
-     * Limpiar selector
-     * de archivos nuevos.
-     */
-
     setFileSlots([
       createFileSlot(),
     ]);
@@ -955,12 +1025,6 @@ export default function TrainingForm({
       500
     );
   }
-
-  /*
-   * ==========================================
-   * ABRIR ADJUNTO
-   * ==========================================
-   */
 
   async function openAttachment(
     attachment:
@@ -1007,12 +1071,6 @@ export default function TrainingForm({
     }
   }
 
-  /*
-   * ==========================================
-   * PANTALLA DE CARGA
-   * ==========================================
-   */
-
   if (loading) {
     return (
       <div className="panel loading-box">
@@ -1020,12 +1078,6 @@ export default function TrainingForm({
       </div>
     );
   }
-
-  /*
-   * ==========================================
-   * FORMULARIO
-   * ==========================================
-   */
 
   return (
     <div className="page-stack">
@@ -1062,8 +1114,6 @@ export default function TrainingForm({
         className="form-grid"
       >
 
-        {/* CLIENTE */}
-
         <Field
           label="CLIENTE"
           required
@@ -1083,8 +1133,6 @@ export default function TrainingForm({
             required
           />
         </Field>
-
-        {/* OBRA / FAENA / LUGAR */}
 
         <Field
           label="OBRA / FAENA / LUGAR"
@@ -1106,8 +1154,6 @@ export default function TrainingForm({
           />
         </Field>
 
-        {/* FECHA */}
-
         <Field
           label="FECHA"
           required
@@ -1127,8 +1173,6 @@ export default function TrainingForm({
           />
         </Field>
 
-        {/* RELATOR */}
-
         <Field
           label="RELATOR / FACILITADOR"
           required
@@ -1137,12 +1181,24 @@ export default function TrainingForm({
             value={
               form.facilitator_id
             }
-            onChange={(e) =>
+            onChange={(e) => {
+              const value =
+                e.target.value;
+
               setField(
                 'facilitator_id',
-                e.target.value
-              )
-            }
+                value
+              );
+
+              if (
+                value !==
+                OTHER_FACILITATOR_VALUE
+              ) {
+                setOtherFacilitator(
+                  ''
+                );
+              }
+            }}
             required
           >
             <option value="">
@@ -1174,12 +1230,55 @@ export default function TrainingForm({
                   </option>
                 )
               )}
-          </select>
-        </Field>
 
-        {/* =====================================
-            HORAS - SELECTOR 24 HORAS
-        ===================================== */}
+            <option
+              value={
+                OTHER_FACILITATOR_VALUE
+              }
+            >
+              OTROS
+            </option>
+          </select>
+
+          {form.facilitator_id ===
+            OTHER_FACILITATOR_VALUE && (
+            <div
+              style={{
+                marginTop:
+                  '12px',
+              }}
+            >
+              <span
+                className="field-label"
+                style={{
+                  display:
+                    'block',
+
+                  marginBottom:
+                    '7px',
+                }}
+              >
+                NOMBRE DEL RELATOR / FACILITADOR
+                <b> *</b>
+              </span>
+
+              <input
+                type="text"
+                value={
+                  otherFacilitator
+                }
+                onChange={(e) =>
+                  setOtherFacilitator(
+                    e.target.value
+                  )
+                }
+                placeholder="Escribe el nombre del relator/facilitador"
+                autoFocus
+                required
+              />
+            </div>
+          )}
+        </Field>
 
         <div className="two-col">
 
@@ -1223,8 +1322,6 @@ export default function TrainingForm({
 
         </div>
 
-        {/* DURACIÓN */}
-
         <Field label="DURACIÓN">
 
           <div
@@ -1243,8 +1340,6 @@ export default function TrainingForm({
           </div>
 
         </Field>
-
-        {/* ACTIVIDAD */}
 
         <Field
           label="NOMBRE DE CHARLA / CURSO / ACTIVIDAD"
@@ -1266,8 +1361,6 @@ export default function TrainingForm({
           />
         </Field>
 
-        {/* PARTICIPANTES */}
-
         <Field
           label="N° DE PARTICIPANTES"
         >
@@ -1288,8 +1381,6 @@ export default function TrainingForm({
           />
         </Field>
 
-        {/* OBSERVACIONES */}
-
         <Field
           label="OBSERVACIONES"
         >
@@ -1307,10 +1398,6 @@ export default function TrainingForm({
             placeholder="Opcional"
           />
         </Field>
-
-        {/* =====================================
-            ADJUNTOS MÚLTIPLES
-        ===================================== */}
 
         <div className="field-card">
 
@@ -1335,8 +1422,6 @@ export default function TrainingForm({
             JPG y PNG. Máximo
             10 MB por archivo.
           </small>
-
-          {/* ADJUNTOS GUARDADOS */}
 
           {existingAttachments.length >
             0 && (
@@ -1465,8 +1550,6 @@ export default function TrainingForm({
 
           )}
 
-          {/* NUEVOS ADJUNTOS */}
-
           <div
             style={{
               display:
@@ -1481,109 +1564,172 @@ export default function TrainingForm({
               (
                 slot,
                 index
-              ) => (
+              ) => {
+                const inputId =
+                  `attachment-${slot.id}`;
 
-                <div
-                  key={
-                    slot.id
-                  }
-                  style={{
-                    display:
-                      'grid',
-
-                    gap:
-                      '7px',
-
-                    padding:
-                      '12px',
-
-                    border:
-                      '1px solid #e0e0de',
-
-                    borderRadius:
-                      '8px',
-                  }}
-                >
-
+                return (
                   <div
+                    key={
+                      slot.id
+                    }
                     style={{
                       display:
-                        'flex',
-
-                      alignItems:
-                        'center',
-
-                      justifyContent:
-                        'space-between',
+                        'grid',
 
                       gap:
+                        '9px',
+
+                      padding:
                         '12px',
+
+                      border:
+                        '1px solid #e0e0de',
+
+                      borderRadius:
+                        '8px',
                     }}
                   >
 
-                    <strong
+                    <div
                       style={{
-                        fontSize:
+                        display:
+                          'flex',
+
+                        alignItems:
+                          'center',
+
+                        justifyContent:
+                          'space-between',
+
+                        gap:
                           '12px',
                       }}
                     >
-                      Adjunto{' '}
-                      {existingAttachments.length +
-                        index +
-                        1}
-                    </strong>
 
-                    {(fileSlots.length >
-                      1 ||
-                      slot.file) && (
-
-                      <button
-                        type="button"
-                        className="btn small ghost"
-                        onClick={() =>
-                          removeFileSlot(
-                            slot.id
-                          )
-                        }
+                      <strong
+                        style={{
+                          fontSize:
+                            '12px',
+                        }}
                       >
-                        Quitar
-                      </button>
+                        Adjunto{' '}
+                        {existingAttachments.length +
+                          index +
+                          1}
+                      </strong>
 
-                    )}
+                      {(fileSlots.length >
+                        1 ||
+                        slot.file) && (
+
+                        <button
+                          type="button"
+                          className="btn small ghost"
+                          onClick={() =>
+                            removeFileSlot(
+                              slot.id
+                            )
+                          }
+                        >
+                          Quitar
+                        </button>
+
+                      )}
+
+                    </div>
+
+                    <input
+                      id={
+                        inputId
+                      }
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      onChange={(e) =>
+                        changeFile(
+                          slot.id,
+
+                          e.target
+                            .files?.[0] ??
+                            null
+                        )
+                      }
+                      style={{
+                        position:
+                          'absolute',
+
+                        width:
+                          '1px',
+
+                        height:
+                          '1px',
+
+                        padding:
+                          0,
+
+                        margin:
+                          '-1px',
+
+                        overflow:
+                          'hidden',
+
+                        clip:
+                          'rect(0, 0, 0, 0)',
+
+                        whiteSpace:
+                          'nowrap',
+
+                        border:
+                          0,
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        display:
+                          'flex',
+
+                        alignItems:
+                          'center',
+
+                        gap:
+                          '12px',
+
+                        flexWrap:
+                          'wrap',
+                      }}
+                    >
+                      <label
+                        htmlFor={
+                          inputId
+                        }
+                        className="btn secondary"
+                        style={{
+                          cursor:
+                            'pointer',
+
+                          width:
+                            'fit-content',
+                        }}
+                      >
+                        📎{' '}
+                        {slot.file
+                          ? 'Cambiar archivo'
+                          : 'Seleccionar archivo'}
+                      </label>
+
+                      <small className="helper">
+                        {slot.file
+                          ? `${slot.file.name} · ${formatBytes(
+                              slot.file.size
+                            )}`
+                          : 'Ningún archivo seleccionado'}
+                      </small>
+                    </div>
 
                   </div>
-
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                    onChange={(e) =>
-                      changeFile(
-                        slot.id,
-
-                        e.target
-                          .files?.[0] ??
-                          null
-                      )
-                    }
-                  />
-
-                  {slot.file && (
-
-                    <small className="helper">
-                      {
-                        slot.file.name
-                      }{' '}
-                      ·{' '}
-                      {formatBytes(
-                        slot.file.size
-                      )}
-                    </small>
-
-                  )}
-
-                </div>
-
-              )
+                );
+              }
             )}
 
           </div>
@@ -1604,8 +1750,6 @@ export default function TrainingForm({
 
         </div>
 
-        {/* MENSAJES */}
-
         {error && (
           <div className="alert error">
             {error}
@@ -1617,8 +1761,6 @@ export default function TrainingForm({
             {success}
           </div>
         )}
-
-        {/* BOTONES */}
 
         <div className="form-actions">
 
@@ -1657,12 +1799,6 @@ export default function TrainingForm({
   );
 }
 
-/*
- * ==========================================
- * COMPONENTE FIELD
- * ==========================================
- */
-
 function Field({
   label,
   required,
@@ -1689,18 +1825,6 @@ function Field({
     </label>
   );
 }
-
-/*
- * ==========================================
- * SELECTOR DE HORA 24 HORAS
- * ==========================================
- *
- * Horas:   00 a 23
- * Minutos: 00 a 59
- *
- * No utiliza el selector nativo
- * AM / PM del navegador.
- */
 
 function TimeSelector({
   value,
@@ -1799,8 +1923,6 @@ function TimeSelector({
       }}
     >
 
-      {/* HORA */}
-
       <select
         value={
           currentHour
@@ -1840,8 +1962,6 @@ function TimeSelector({
 
       </select>
 
-      {/* DOS PUNTOS */}
-
       <span
         aria-hidden="true"
         style={{
@@ -1860,8 +1980,6 @@ function TimeSelector({
       >
         :
       </span>
-
-      {/* MINUTOS */}
 
       <select
         value={
@@ -1905,12 +2023,6 @@ function TimeSelector({
     </div>
   );
 }
-
-/*
- * ==========================================
- * UTILIDADES
- * ==========================================
- */
 
 function sanitizeFileName(
   name: string
