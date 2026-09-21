@@ -61,6 +61,14 @@ export default function Records({
   const [dateTo, setDateTo] =
     useState('');
 
+  const [sortBy, setSortBy] =
+    useState<
+      | 'date_desc'
+      | 'date_asc'
+      | 'client_asc'
+      | 'client_desc'
+    >('date_desc');
+
   const [loading, setLoading] =
     useState(true);
 
@@ -154,43 +162,125 @@ export default function Records({
           'es'
         );
 
-      return records.filter(
-        (r) => {
-          if (
-            dateFrom &&
-            r.training_date <
-              dateFrom
-          ) {
-            return false;
-          }
+      const result =
+        records.filter(
+          (r) => {
+            if (
+              dateFrom &&
+              r.training_date <
+                dateFrom
+            ) {
+              return false;
+            }
 
-          if (
-            dateTo &&
-            r.training_date >
-              dateTo
-          ) {
-            return false;
-          }
+            if (
+              dateTo &&
+              r.training_date >
+                dateTo
+            ) {
+              return false;
+            }
 
-          if (!q) {
-            return true;
-          }
+            if (!q) {
+              return true;
+            }
 
-          const haystack = [
-            r.activity_name,
-            r.site,
-            r.client_name,
-            relationName(
-              r.facilitators
-            ),
-          ]
-            .join(' ')
-            .toLocaleLowerCase(
-              'es'
+            const haystack = [
+              r.activity_name,
+              r.site,
+              r.client_name,
+              relationName(
+                r.facilitators
+              ),
+            ]
+              .join(' ')
+              .toLocaleLowerCase(
+                'es'
+              );
+
+            return haystack.includes(
+              q
             );
+          }
+        );
 
-          return haystack.includes(
-            q
+      return [...result].sort(
+        (a, b) => {
+          if (
+            sortBy ===
+            'client_asc'
+          ) {
+            const clientOrder =
+              a.client_name.localeCompare(
+                b.client_name,
+                'es-CL',
+                {
+                  sensitivity:
+                    'base',
+                }
+              );
+
+            return (
+              clientOrder ||
+              b.training_date.localeCompare(
+                a.training_date
+              )
+            );
+          }
+
+          if (
+            sortBy ===
+            'client_desc'
+          ) {
+            const clientOrder =
+              b.client_name.localeCompare(
+                a.client_name,
+                'es-CL',
+                {
+                  sensitivity:
+                    'base',
+                }
+              );
+
+            return (
+              clientOrder ||
+              b.training_date.localeCompare(
+                a.training_date
+              )
+            );
+          }
+
+          if (
+            sortBy ===
+            'date_asc'
+          ) {
+            return (
+              a.training_date.localeCompare(
+                b.training_date
+              ) ||
+              a.client_name.localeCompare(
+                b.client_name,
+                'es-CL',
+                {
+                  sensitivity:
+                    'base',
+                }
+              )
+            );
+          }
+
+          return (
+            b.training_date.localeCompare(
+              a.training_date
+            ) ||
+            a.client_name.localeCompare(
+              b.client_name,
+              'es-CL',
+              {
+                sensitivity:
+                  'base',
+              }
+            )
           );
         }
       );
@@ -199,6 +289,7 @@ export default function Records({
       search,
       dateFrom,
       dateTo,
+      sortBy,
     ]);
 
   const selectedRecords =
@@ -1294,6 +1385,43 @@ export default function Records({
                 )
               }
             />
+
+          </div>
+
+          <div className="sort-filter">
+
+            <span>
+              Ordenar
+            </span>
+
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as
+                    | 'date_desc'
+                    | 'date_asc'
+                    | 'client_asc'
+                    | 'client_desc'
+                )
+              }
+            >
+              <option value="date_desc">
+                Fecha: más reciente
+              </option>
+
+              <option value="date_asc">
+                Fecha: más antigua
+              </option>
+
+              <option value="client_asc">
+                Cliente: A–Z
+              </option>
+
+              <option value="client_desc">
+                Cliente: Z–A
+              </option>
+            </select>
 
           </div>
 

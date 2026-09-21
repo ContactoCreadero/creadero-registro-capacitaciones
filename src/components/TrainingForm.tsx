@@ -1009,6 +1009,33 @@ export default function TrainingForm({
       createFileSlot(),
     ]);
 
+    if (!recordId) {
+      try {
+        await notifyNewTraining(
+          id
+        );
+      } catch (
+        notificationError
+      ) {
+        setSuccess(
+          'La capacitación quedó registrada correctamente.'
+        );
+
+        setError(
+          `El registro se guardó, pero no fue posible enviar el correo de notificación: ${
+            notificationError instanceof
+            Error
+              ? notificationError.message
+              : 'error desconocido'
+          }`
+        );
+
+        setSaving(false);
+
+        return;
+      }
+    }
+
     setSuccess(
       recordId
         ? 'Registro actualizado correctamente.'
@@ -1024,6 +1051,69 @@ export default function TrainingForm({
       onSaved,
       500
     );
+  }
+
+  async function notifyNewTraining(
+    trainingRecordId: string
+  ) {
+    const {
+      data: sessionData,
+      error: sessionError,
+    } =
+      await supabase.auth
+        .getSession();
+
+    const accessToken =
+      sessionData.session
+        ?.access_token;
+
+    if (
+      sessionError ||
+      !accessToken
+    ) {
+      throw new Error(
+        'No fue posible validar la sesión para enviar la notificación.'
+      );
+    }
+
+    const response =
+      await fetch(
+        '/api/notify-training',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            recordId:
+              trainingRecordId,
+          }),
+        }
+      );
+
+    if (!response.ok) {
+      let detail = '';
+
+      try {
+        const payload =
+          (await response.json()) as {
+            error?: string;
+          };
+
+        detail =
+          payload.error ?? '';
+      } catch {
+        // La respuesta puede no ser JSON.
+      }
+
+      throw new Error(
+        detail ||
+          'No fue posible enviar el correo de notificación.'
+      );
+    }
   }
 
   async function openAttachment(
