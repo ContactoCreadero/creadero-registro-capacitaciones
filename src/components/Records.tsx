@@ -24,6 +24,7 @@ import {
 
 type Props = {
   role: Role;
+  userId: string;
   onEdit: (id: string) => void;
   onNew: () => void;
 };
@@ -40,6 +41,7 @@ type Attachment = {
 
 export default function Records({
   role,
+  userId,
   onEdit,
   onNew,
 }: Props) {
@@ -313,6 +315,43 @@ export default function Records({
     );
   }
 
+  /*
+   * El administrador puede editar y
+   * eliminar cualquier registro.
+   * Un usuario normal, solo los que
+   * él registró.
+   *
+   * (La base de datos aplica la misma
+   * regla; esto solo muestra u oculta
+   * los botones.)
+   */
+  function canManage(
+    record:
+      | TrainingRecord
+      | undefined
+  ) {
+    if (!record) {
+      return false;
+    }
+
+    return (
+      role === 'admin' ||
+      record.created_by ===
+        userId
+    );
+  }
+
+  function canManageRecordId(
+    recordId: string
+  ) {
+    return canManage(
+      records.find(
+        (r) =>
+          r.id === recordId
+      )
+    );
+  }
+
   function toggle(
     id: string
   ) {
@@ -406,7 +445,9 @@ export default function Records({
     attachment: Attachment
   ) {
     if (
-      role !== 'admin'
+      !canManageRecordId(
+        attachment.training_record_id
+      )
     ) {
       return;
     }
@@ -423,8 +464,15 @@ export default function Records({
     /*
      * Primero eliminamos el registro
      * de la base de datos.
+     *
+     * .select('id') devuelve lo que
+     * realmente se eliminó: si la base
+     * de datos no lo permitió, viene
+     * vacío (sin mensaje de error).
      */
     const {
+      data:
+        deletedRows,
       error:
         deleteRowError,
     } = await supabase
@@ -435,13 +483,25 @@ export default function Records({
       .eq(
         'id',
         attachment.id
-      );
+      )
+      .select('id');
 
     if (
       deleteRowError
     ) {
       alert(
         `No fue posible eliminar el adjunto: ${deleteRowError.message}`
+      );
+
+      return;
+    }
+
+    if (
+      !deletedRows ||
+      deletedRows.length === 0
+    ) {
+      alert(
+        'No fue posible eliminar el adjunto: no tienes permiso para eliminarlo.'
       );
 
       return;
@@ -482,16 +542,34 @@ export default function Records({
   }
 
   async function deleteSelected() {
-    if (
-      role !== 'admin'
-    ) {
-      return;
-    }
-
     const ids =
       Array.from(selected);
 
     if (!ids.length) {
+      return;
+    }
+
+    /*
+     * Un usuario normal solo puede
+     * eliminar lo que él registró.
+     */
+    const notAllowed =
+      ids.filter(
+        (id) =>
+          !canManageRecordId(
+            id
+          )
+      );
+
+    if (
+      notAllowed.length > 0
+    ) {
+      alert(
+        notAllowed.length === 1
+          ? 'Solo puedes eliminar las capacitaciones que registraste tú. Quita de la selección el registro de otro usuario.'
+          : `Solo puedes eliminar las capacitaciones que registraste tú. Quita de la selección los ${notAllowed.length} registros de otros usuarios.`
+      );
+
       return;
     }
 
@@ -505,26 +583,16 @@ export default function Records({
     }
 
     /*
-     * Guardamos las rutas antes
-     * de borrar los registros.
-     */
-    const attachmentPaths =
-      attachments
-        .filter((a) =>
-          ids.includes(
-            a.training_record_id
-          )
-        )
-        .map(
-          (a) =>
-            a.storage_path
-        );
-
-    /*
      * training_attachments tiene
      * ON DELETE CASCADE.
+     *
+     * .select('id') devuelve los
+     * registros que realmente se
+     * eliminaron.
      */
     const {
+      data:
+        deletedRows,
       error:
         deleteError,
     } = await supabase
@@ -535,7 +603,8 @@ export default function Records({
       .in(
         'id',
         ids
-      );
+      )
+      .select('id');
 
     if (deleteError) {
       alert(
@@ -543,6 +612,51 @@ export default function Records({
       );
 
       return;
+    }
+
+    const deletedIds =
+      (
+        (deletedRows ??
+          []) as {
+          id: string;
+        }[]
+      ).map(
+        (row) => row.id
+      );
+
+    /*
+     * Rutas de los archivos de los
+     * registros que sí se eliminaron.
+     */
+    const attachmentPaths =
+      attachments
+        .filter((a) =>
+          deletedIds.includes(
+            a.training_record_id
+          )
+        )
+        .map(
+          (a) =>
+            a.storage_path
+        );
+
+    if (
+      deletedIds.length === 0
+    ) {
+      alert(
+        'No fue posible eliminar: no tienes permiso para eliminar estos registros.'
+      );
+
+      return;
+    }
+
+    if (
+      deletedIds.length <
+      ids.length
+    ) {
+      alert(
+        `Se eliminaron ${deletedIds.length} de ${ids.length} registro(s). Los demás no se pudieron eliminar porque no tienes permiso.`
+      );
     }
 
     /*
@@ -1324,7 +1438,7 @@ export default function Records({
 
             {role === 'admin'
               ? ' Como administrador también puedes editarlos y eliminarlos.'
-              : ''}
+              : ' También puedes editar y eliminar las capacitaciones que registraste tú.'}
           </p>
         </div>
 
@@ -1466,21 +1580,19 @@ export default function Records({
               Imprimir seleccionados
             </button>
 
-            {role === 'admin' && (
-              <button
-                className="btn small danger"
-                disabled={
-                  !selected.size
-                }
-                onClick={() =>
-                  void deleteSelected()
-                }
-              >
-                <TrashIcon />
+            <button
+              className="btn small danger"
+              disabled={
+                !selected.size
+              }
+              onClick={() =>
+                void deleteSelected()
+              }
+            >
+              <TrashIcon />
 
-                Eliminar
-              </button>
-            )}
+              Eliminar
+            </button>
 
           </div>
 
@@ -1661,8 +1773,9 @@ export default function Records({
 
                           <div className="row-actions">
 
-                            {role ===
-                              'admin' && (
+                            {canManage(
+                              r
+                            ) && (
                               <button
                                 title="Editar"
                                 className="icon-btn"
@@ -1948,8 +2061,9 @@ export default function Records({
                           Abrir
                         </button>
 
-                        {role ===
-                          'admin' && (
+                        {canManageRecordId(
+                          attachment.training_record_id
+                        ) && (
 
                           <button
                             type="button"

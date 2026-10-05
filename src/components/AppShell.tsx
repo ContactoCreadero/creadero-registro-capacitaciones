@@ -52,7 +52,7 @@ export default function AppShell({ profile }: { profile: Profile }) {
         <main className="content">
           {view === 'home' && <Dashboard onNew={() => navigate('new')} onRecords={() => navigate('records')} />}
           {view === 'new' && <TrainingForm recordId={editingId} userId={profile.id} onSaved={() => navigate('records')} onCancel={() => navigate('records')} />}
-          {view === 'records' && <Records role={profile.role} onEdit={edit} onNew={() => navigate('new')} />}
+          {view === 'records' && <Records role={profile.role} userId={profile.id} onEdit={edit} onNew={() => navigate('new')} />}
           {view === 'admin' && profile.role === 'admin' && <AdminCatalogs />}
         </main>
       </div>
