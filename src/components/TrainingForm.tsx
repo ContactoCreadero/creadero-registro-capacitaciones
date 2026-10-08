@@ -46,6 +46,14 @@ const MAX_FILE_SIZE =
 const OTHER_FACILITATOR_VALUE =
   '__OTROS__';
 
+const ACTIVITY_TYPES = [
+  'CHARLA',
+  'CURSO',
+];
+
+const OTHER_ACTIVITY_TYPE_VALUE =
+  '__OTRO__';
+
 const initialForm = {
   client_name: '',
   site: '',
@@ -58,6 +66,8 @@ const initialForm = {
 
   start_time: '08:00',
   end_time: '08:30',
+
+  activity_type: '',
 
   activity_name: '',
 
@@ -92,6 +102,11 @@ export default function TrainingForm({
   const [
     otherFacilitator,
     setOtherFacilitator,
+  ] = useState('');
+
+  const [
+    otherActivityType,
+    setOtherActivityType,
   ] = useState('');
 
   const [
@@ -246,6 +261,21 @@ export default function TrainingForm({
       const r =
         recordResponse.data as TrainingRecord;
 
+      const savedActivityType =
+        (
+          r.activity_type ??
+          ''
+        )
+          .trim()
+          .toLocaleUpperCase(
+            'es-CL'
+          );
+
+      const isListedActivityType =
+        ACTIVITY_TYPES.includes(
+          savedActivityType
+        );
+
       setForm({
         client_name:
           r.client_name ??
@@ -273,6 +303,13 @@ export default function TrainingForm({
             5
           ),
 
+        activity_type:
+          !savedActivityType
+            ? ''
+            : isListedActivityType
+              ? savedActivityType
+              : OTHER_ACTIVITY_TYPE_VALUE,
+
         activity_name:
           r.activity_name,
 
@@ -291,6 +328,13 @@ export default function TrainingForm({
 
       setOtherFacilitator(
         ''
+      );
+
+      setOtherActivityType(
+        savedActivityType &&
+          !isListedActivityType
+          ? savedActivityType
+          : ''
       );
 
       setPersistedId(
@@ -326,6 +370,10 @@ export default function TrainingForm({
       });
 
       setOtherFacilitator(
+        ''
+      );
+
+      setOtherActivityType(
         ''
       );
 
@@ -601,6 +649,28 @@ export default function TrainingForm({
     }
 
     if (
+      !form.activity_type
+    ) {
+      setError(
+        'Selecciona el tipo de actividad.'
+      );
+
+      return;
+    }
+
+    if (
+      form.activity_type ===
+        OTHER_ACTIVITY_TYPE_VALUE &&
+      !otherActivityType.trim()
+    ) {
+      setError(
+        'Escribe el tipo de actividad.'
+      );
+
+      return;
+    }
+
+    if (
       !form.facilitator_id
     ) {
       setError(
@@ -706,6 +776,16 @@ export default function TrainingForm({
       return;
     }
 
+    const activityType =
+      form.activity_type ===
+      OTHER_ACTIVITY_TYPE_VALUE
+        ? otherActivityType
+            .trim()
+            .toLocaleUpperCase(
+              'es-CL'
+            )
+        : form.activity_type;
+
     const id =
       persistedId ??
       recordId ??
@@ -741,6 +821,9 @@ export default function TrainingForm({
 
             duration_minutes:
               duration,
+
+            activity_type:
+              activityType,
 
             activity_name:
               form.activity_name.trim(),
@@ -804,6 +887,9 @@ export default function TrainingForm({
 
             duration_minutes:
               duration,
+
+            activity_type:
+              activityType,
 
             activity_name:
               form.activity_name.trim(),
@@ -1261,6 +1347,107 @@ export default function TrainingForm({
             }
             required
           />
+        </Field>
+
+        <Field
+          label="TIPO DE ACTIVIDAD"
+          required
+        >
+          <select
+            value={
+              form.activity_type
+            }
+            onChange={(e) => {
+              const value =
+                e.target.value;
+
+              setField(
+                'activity_type',
+                value
+              );
+
+              if (
+                value !==
+                OTHER_ACTIVITY_TYPE_VALUE
+              ) {
+                setOtherActivityType(
+                  ''
+                );
+              }
+            }}
+            required
+          >
+            <option value="">
+              Seleccionar
+            </option>
+
+            {ACTIVITY_TYPES.map(
+              (type) => (
+                <option
+                  key={
+                    type
+                  }
+                  value={
+                    type
+                  }
+                >
+                  {type}
+                </option>
+              )
+            )}
+
+            <option
+              value={
+                OTHER_ACTIVITY_TYPE_VALUE
+              }
+            >
+              OTRO
+            </option>
+          </select>
+
+          {form.activity_type ===
+            OTHER_ACTIVITY_TYPE_VALUE && (
+            <div
+              style={{
+                marginTop:
+                  '12px',
+              }}
+            >
+              <span
+                className="field-label"
+                style={{
+                  display:
+                    'block',
+
+                  marginBottom:
+                    '7px',
+                }}
+              >
+                ESPECIFICA EL TIPO DE ACTIVIDAD
+                <b> *</b>
+              </span>
+
+              <input
+                type="text"
+                value={
+                  otherActivityType
+                }
+                onChange={(e) =>
+                  setOtherActivityType(
+                    e.target.value
+                  )
+                }
+                placeholder="Ej.: TALLER, TEAM BUILDING, INDUCCIÓN"
+                maxLength={60}
+                autoFocus
+                required
+                style={{
+                  width:
+                    '100%',
+                }}
+              />
+            </div>
+          )}
         </Field>
 
         <Field

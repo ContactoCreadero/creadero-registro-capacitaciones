@@ -189,6 +189,8 @@ export default function Records({
 
             const haystack = [
               r.activity_name,
+              r.activity_type ??
+                '',
               r.site,
               r.client_name,
               relationName(
@@ -787,6 +789,19 @@ export default function Records({
 
             <div class="field wide">
               <span>
+                TIPO DE ACTIVIDAD
+              </span>
+
+              <strong>
+                ${escapeHtml(
+                  r.activity_type ||
+                    '—'
+                )}
+              </strong>
+            </div>
+
+            <div class="field wide">
+              <span>
                 NOMBRE DE CHARLA / CURSO / ACTIVIDAD
               </span>
 
@@ -1358,6 +1373,19 @@ export default function Records({
 
               <div class="field wide">
                 <span>
+                  TIPO DE ACTIVIDAD
+                </span>
+
+                <strong>
+                  ${escapeHtml(
+                    r.activity_type ||
+                      '—'
+                  )}
+                </strong>
+              </div>
+
+              <div class="field wide">
+                <span>
                   NOMBRE DE CHARLA / CURSO / ACTIVIDAD
                 </span>
 
@@ -1629,6 +1657,7 @@ export default function Records({
                   <th></th>
                   <th>Fecha</th>
                   <th>Cliente</th>
+                  <th>Tipo</th>
                   <th>Actividad</th>
                   <th>Lugar</th>
                   <th>Relator</th>
@@ -1690,6 +1719,11 @@ export default function Records({
                               r.client_name
                             }
                           </strong>
+                        </td>
+
+                        <td>
+                          {r.activity_type ||
+                            '—'}
                         </td>
 
                         <td>

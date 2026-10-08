@@ -30,6 +30,8 @@ export type TrainingRecord = {
 
   duration_minutes: number;
 
+  activity_type: string | null;
+
   activity_name: string;
 
   participants_count: number | null;

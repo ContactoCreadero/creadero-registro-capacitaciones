@@ -1,7 +1,7 @@
 -- ============================================================
 -- CREADERO · REGISTRO DE CAPACITACIONES
 -- Estructura de la base de datos en Supabase.
--- Refleja la base de PRODUCCIÓN al 05-10-2026.
+-- Refleja la base de PRODUCCIÓN al 08-10-2026.
 --
 -- ⚠ NO EJECUTAR EN PRODUCCIÓN: la base de producción es la referencia.
 --   Este archivo sirve para documentarla y para crear una base NUEVA
@@ -52,6 +52,9 @@ create table if not exists public.facilitators (
 --   client_id y attachment_path: columnas antiguas, ya no las usa la app
 --   (el cliente va en client_name y los adjuntos en training_attachments).
 --   client_name quedó al final porque se agregó después en producción.
+--   activity_type (tipo de actividad): CHARLA, CURSO o el texto libre que
+--   se escribe al elegir "OTRO". Se agregó el 08-10-2026; los registros
+--   anteriores a esa fecha lo tienen vacío (NULL).
 create table if not exists public.training_records (
   id uuid primary key default gen_random_uuid(),
   client_id uuid references public.clients(id) on update cascade on delete restrict,
@@ -68,7 +71,8 @@ create table if not exists public.training_records (
   created_by uuid not null references auth.users(id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  client_name text
+  client_name text,
+  activity_type text
 );
 
 -- Adjuntos (respaldos) de cada capacitación. El archivo está en Storage,

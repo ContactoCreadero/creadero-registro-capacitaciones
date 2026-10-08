@@ -13,6 +13,7 @@ type TrainingRecord = {
   start_time: string;
   end_time: string;
   duration_minutes: number;
+  activity_type: string | null;
   activity_name: string;
   participants_count: number | null;
   observations: string | null;
@@ -199,6 +200,7 @@ export async function POST(
       'start_time',
       'end_time',
       'duration_minutes',
+      'activity_type',
       'activity_name',
       'participants_count',
       'observations',
@@ -337,6 +339,7 @@ export async function POST(
                 ${emailRow('Relator / Facilitador', relator)}
                 ${emailRow('Horario', `${record.start_time.slice(0, 5)} – ${record.end_time.slice(0, 5)}`)}
                 ${emailRow('Duración', formatDuration(record.duration_minutes))}
+                ${emailRow('Tipo de actividad', record.activity_type || '—')}
                 ${emailRow('Actividad', record.activity_name)}
                 ${emailRow('N° participantes', record.participants_count ?? '—')}
                 ${emailRow('Adjuntos', attachmentCount)}
